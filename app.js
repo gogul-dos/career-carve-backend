@@ -1,57 +1,152 @@
-// app.js
 const express = require("express");
 const bodyParser = require("body-parser");
-const { Student, Mentor, Booking, Payment, sequelize } = require("./models");
+const { Sequelize, DataTypes } = require("sequelize");
 
+// Initialize the app and sequelize
 const app = express();
+const sequelize = new Sequelize("career.db", "user", "password", {
+  dialect: "sqlite",
+  storage: "./career.db",
+});
+
+// Middleware
 app.use(bodyParser.json());
 
+// Models
+const Student = sequelize.define("Student", {
+  name: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  areaOfInterest: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  availableTime: {
+    type: DataTypes.JSON,
+    allowNull: false,
+  },
+});
+
+const Mentor = sequelize.define("Mentor", {
+  name: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  expertise: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  availableTime: {
+    type: DataTypes.JSON,
+    allowNull: false,
+  },
+});
+
+const Booking = sequelize.define("Booking", {
+  studentId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+  },
+  mentorId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+  },
+  date: {
+    type: DataTypes.DATE,
+    allowNull: false,
+  },
+  duration: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+  },
+  premiumService: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+  },
+});
+
+// Relationships
+Student.hasMany(Booking);
+Mentor.hasMany(Booking);
+Booking.belongsTo(Student);
+Booking.belongsTo(Mentor);
+
 // Routes
-app.get("/mentors", async (req, res) => {
-  const { areaOfInterest } = req.query;
-  const mentors = await Mentor.findAll({
-    where: { expertise: areaOfInterest },
-  });
-  res.json(mentors);
+app.post("/students", async (req, res) => {
+  try {
+    const student = await Student.create(req.body);
+    res.json(student);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to create student" });
+  }
 });
 
-app.post("/book", async (req, res) => {
-  const { studentId, mentorId, date, duration, premiumService } = req.body;
-
-  const booking = await Booking.create({
-    studentId,
-    mentorId,
-    date,
-    duration,
-    premiumService,
-  });
-
-  let amount = duration === 30 ? 2000 : duration === 45 ? 3000 : 4000;
-  if (premiumService) amount += 1000;
-
-  const payment = await Payment.create({
-    bookingId: booking.id,
-    amount,
-    status: "pending",
-  });
-
-  res.json({ booking, payment });
+app.post("/mentors", async (req, res) => {
+  try {
+    const mentor = await Mentor.create(req.body);
+    res.json(mentor);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to create mentor" });
+  }
 });
 
-app.post("/payment/:id", async (req, res) => {
-  const { id } = req.params;
-  const { status } = req.body;
+app.post("/bookings", async (req, res) => {
+  try {
+    const booking = await Booking.create(req.body);
+    res.json(booking);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to create booking" });
+  }
+});
 
-  const payment = await Payment.findByPk(id);
-  if (!payment) return res.status(404).json({ error: "Payment not found" });
+// Payment route
+app.post("/payment", async (req, res) => {
+  const { studentId, mentorId, duration, premiumService } = req.body;
 
-  payment.status = status;
-  await payment.save();
+  // Calculate the payment amount
+  let amount = 0;
+  if (duration === 30) amount = 2000;
+  else if (duration === 45) amount = 3000;
+  else if (duration === 60) amount = 4000;
 
-  res.json(payment);
+  if (premiumService) {
+    amount += 1000; // Extra charge for premium service
+  }
+
+  try {
+    // Mock payment success
+    const paymentStatus = "success"; // Assume the payment went through
+
+    if (paymentStatus === "success") {
+      // Create the booking in the database
+      const booking = await Booking.create({
+        studentId,
+        mentorId,
+        date: new Date(),
+        duration,
+        premiumService,
+      });
+
+      res.json({ message: "Payment successful", booking });
+    } else {
+      res.status(400).json({ error: "Payment failed" });
+    }
+  } catch (error) {
+    res
+      .status(500)
+      .json({ error: "An error occurred during payment processing" });
+  }
 });
 
 // Sync database and start server
-sequelize.sync().then(() => {
-  app.listen(3000, () => console.log("Server running on port 3000"));
-});
+sequelize
+  .sync({ force: false })
+  .then(() => {
+    app.listen(3000, () => {
+      console.log("Server is running on port 3000");
+    });
+  })
+  .catch((error) => {
+    console.error("Unable to connect to the database:", error);
+  });
